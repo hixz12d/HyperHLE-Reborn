@@ -1239,6 +1239,13 @@ fn path_for_resource_helper(
                 for (entry, is_dir) in entries {
                     let full = format!("{}/{}", dir, entry);
                     if is_dir {
+                        // Localized copies are resolved by the caller in the
+                        // user's language order. Picking one here would
+                        // return whichever .lproj the directory scan meets
+                        // first (e.g. a random language's Localizable.strings).
+                        if entry.to_lowercase().ends_with(".lproj") {
+                            continue;
+                        }
                         stack.push(full);
                     } else if entry.to_lowercase() == wanted {
                         return ns_string::from_rust_string(env, full);
