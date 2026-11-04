@@ -180,6 +180,22 @@ pub fn set_view_controller(env: &mut Environment, view: id, controller: id) {
     host_obj.view_controller = controller;
 }
 
+/// Detach `view` from its superview (if any) without sending
+/// `willMoveToSuperview:`/`didMoveToSuperview`. The caller sends those, since
+/// moving a view to a new superview notifies it of the new superview only.
+fn detach_from_superview(env: &mut Environment, view: id) {
+    let &mut UIViewHostObject { ref mut superview, layer: view_layer, .. } = env.objc.borrow_mut(view);
+    let superview = std::mem::take(superview);
+    if superview == nil { return; }
+    let _: () = msg![env; view_layer removeFromSuperlayer];
+
+    let subviews = &mut env.objc.borrow_mut::<UIViewHostObject>(superview).subviews;
+    if let Some(idx) = subviews.iter().position(|&subview| subview == view) {
+        subviews.remove(idx);
+        release(env, view);
+    }
+}
+
 /// Distribute a change of the superview's size along one axis over the
 /// flexible parts of a subview (leading margin, size, trailing margin), in
 /// proportion to their current lengths, or evenly if they are all zero. This
@@ -1490,7 +1506,8 @@ pub const CLASSES: ClassExports = objc_classes! {
         () = msg![env; this bringSubviewToFront:view];
     } else {
         retain(env, view);
-        () = msg![env; view removeFromSuperview];
+        () = msg![env; view willMoveToSuperview:this];
+        detach_from_superview(env, view);
         let subview_obj = env.objc.borrow_mut::<UIViewHostObject>(view);
         subview_obj.superview = this;
         let subview_layer = subview_obj.layer;
@@ -1498,6 +1515,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         this_obj.subviews.push(view);
         let this_layer = this_obj.layer;
         () = msg![env; this_layer addSublayer:subview_layer];
+        () = msg![env; view didMoveToSuperview];
     }
 }
 
@@ -1508,7 +1526,8 @@ pub const CLASSES: ClassExports = objc_classes! {
     // construction.
     if view == nil { return; }
     retain(env, view);
-    () = msg![env; view removeFromSuperview];
+    () = msg![env; view willMoveToSuperview:this];
+    detach_from_superview(env, view);
 
     let subview_obj = env.objc.borrow_mut::<UIViewHostObject>(view);
     subview_obj.superview = this;
@@ -1523,12 +1542,14 @@ pub const CLASSES: ClassExports = objc_classes! {
     subviews.insert(clamped_index, view);
 
     () = msg![env; this_layer insertSublayer:subview_layer atIndex:(clamped_index as u32)];
+    () = msg![env; view didMoveToSuperview];
 }
 
 - (())insertSubview:(id)view belowSubview:(id)sibling {
     if view == nil { return; }
     retain(env, view);
-    () = msg![env; view removeFromSuperview];
+    () = msg![env; view willMoveToSuperview:this];
+    detach_from_superview(env, view);
 
     let subview_obj = env.objc.borrow_mut::<UIViewHostObject>(view);
     subview_obj.superview = this;
@@ -1552,12 +1573,14 @@ pub const CLASSES: ClassExports = objc_classes! {
     } else {
         () = msg![env; this_layer addSublayer:subview_layer];
     }
+    () = msg![env; view didMoveToSuperview];
 }
 
 - (())insertSubview:(id)view aboveSubview:(id)sibling {
     if view == nil { return; }
     retain(env, view);
-    let _: () = msg![env; view removeFromSuperview];
+    let _: () = msg![env; view willMoveToSuperview:this];
+    detach_from_superview(env, view);
 
     let subview_layer = env.objc.borrow::<UIViewHostObject>(view).layer;
     let sibling_idx = env.objc.borrow::<UIViewHostObject>(this).subviews.iter().position(|&s| s == sibling);
@@ -1578,6 +1601,7 @@ pub const CLASSES: ClassExports = objc_classes! {
     } else {
         let _: () = msg![env; this_layer addSublayer:subview_layer];
     }
+    let _: () = msg![env; view didMoveToSuperview];
 }
 
 - (())bringSubviewToFront:(id)subview {
@@ -1629,19 +1653,14 @@ pub const CLASSES: ClassExports = objc_classes! {
 }
 
 - (())removeFromSuperview {
-    let &mut UIViewHostObject { ref mut superview, layer: this_layer, .. } = env.objc.borrow_mut(this);
-    let superview = std::mem::take(superview);
-    if superview == nil { return; }
-    let _: () = msg![env; this_layer removeFromSuperlayer];
-
-    let superview_obj = env.objc.borrow_mut::<UIViewHostObject>(superview);
-    let subviews = &mut superview_obj.subviews;
-
-    if let Some(idx) = subviews.iter().position(|&subview| subview == this) {
-        let subview = subviews.remove(idx);
-        assert!(subview == this);
-        release(env, this);
-    }
+    if env.objc.borrow::<UIViewHostObject>(this).superview == nil { return; }
+    // Keep the view alive across the notifications: detaching drops the
+    // superview's reference, which may be the last one.
+    retain(env, this);
+    let _: () = msg![env; this willMoveToSuperview:nil];
+    detach_from_superview(env, this);
+    let _: () = msg![env; this didMoveToSuperview];
+    release(env, this);
 }
 
 - (())dealloc {
