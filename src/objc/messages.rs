@@ -310,31 +310,6 @@ fn objc_msgSend_inner(
             }
         }
     }
-    // DIAG (temporary): trace Alexandria Bloodshow's name-entry flow.
-    if receiver != nil {
-        let sel_name = selector.as_str(&env.mem);
-        if matches!(
-            sel_name,
-            "textFieldShouldReturn:"
-                | "textFieldDidEndEditing:"
-                | "scheduledTimerWithTimeInterval:target:selector:userInfo:repeats:"
-                | "didInputName:"
-                | "profileViewDidInputName:"
-                | "_moveToOption"
-                | "_removeContentAndTab"
-                | "setPreviousMode:"
-        ) {
-            let r = env.cpu.regs();
-            log!(
-                "DIAG msg [{:?} {}] r2={:#x} r3={:#x} lr={:#x}",
-                receiver,
-                sel_name,
-                r[2],
-                r[3],
-                r[14]
-            );
-        }
-    }
     // Host-side recursion guard. If an Objective-C method (typically
     // `hitTest:withEvent:` or `pointInside:withEvent:`) ends up recursing
     // into itself indirectly, the host call stack balloons because every

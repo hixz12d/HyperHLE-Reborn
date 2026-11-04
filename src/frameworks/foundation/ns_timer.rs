@@ -454,16 +454,6 @@ pub(super) fn handle_timer(env: &mut Environment, timer: id) -> Option<Instant> 
         target
     );
 
-    // DIAG (temporary): trace one-shot timers.
-    if !repeats {
-        log!(
-            "DIAG one-shot timer {:?} fired: {:?} -> {:?}",
-            timer,
-            if selector.is_null() { "<invocation>" } else { selector.as_str(&env.mem) },
-            target
-        );
-    }
-
     let pool: id = msg_class![env; NSAutoreleasePool new];
     if invocation != nil {
         let _: () = msg![env; invocation invoke];
