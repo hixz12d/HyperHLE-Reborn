@@ -1127,6 +1127,19 @@ pub fn handle_events(env: &mut Environment) -> Option<Instant> {
                     let ui_text_field_class = env.objc.get_known_class("UITextField", &mut env.mem);
                     if env.objc.class_is_subclass_of(class, ui_text_field_class) {
                         match text_event {
+                            // Android IMEs often commit the Return key as a
+                            // "\n" text event instead of a key press. A
+                            // UITextField is single-line: on iOS, Return
+                            // calls textFieldShouldReturn: and never inserts
+                            // a newline.
+                            TextInputEvent::Text(text) if text.contains(['\n', '\r']) => {
+                                let rest: String = text.chars().filter(|&c| c != '\n' && c != '\r').collect();
+                                if !rest.is_empty() {
+                                    ui_view::ui_control::ui_text_field::handle_text(env, responder, rest);
+                                }
+                                log!("UITextField {:?}: Return received as text input", responder);
+                                ui_view::ui_control::ui_text_field::handle_return(env, responder)
+                            }
                             TextInputEvent::Text(text) => {
                                 ui_view::ui_control::ui_text_field::handle_text(env, responder, text)
                             }
@@ -1134,6 +1147,7 @@ pub fn handle_events(env: &mut Environment) -> Option<Instant> {
                                 ui_view::ui_control::ui_text_field::handle_backspace(env, responder)
                             }
                             TextInputEvent::Return => {
+                                log!("UITextField {:?}: Return key received", responder);
                                 ui_view::ui_control::ui_text_field::handle_return(env, responder)
                             }
                         }
