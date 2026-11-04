@@ -221,7 +221,17 @@ pub const CLASSES: ClassExports = objc_classes! {
                 }
             }
         } else {
-            unknown_codes.insert(lang_code_str.into_owned());
+            // Codes without a legacy name (e.g. zh-Hant, zh-Hans, pt-BR) map
+            // directly to `<code>.lproj`.
+            let lang_code_str = lang_code_str.into_owned();
+            let lproj_ns = ns_string::from_rust_string(env, format!("{}.lproj", lang_code_str));
+            let localized_path =
+                path_for_resource_helper(env, this, name, lproj_ns, directory, extension);
+            release(env, lproj_ns);
+            if localized_path != nil {
+                return localized_path;
+            }
+            unknown_codes.insert(lang_code_str);
         }
     }
     if !unknown_codes.is_empty() {
@@ -685,7 +695,17 @@ pub const CLASSES: ClassExports = objc_classes! {
                 }
             }
         } else {
-            unknown_codes.insert(lang_code_str.into_owned());
+            // Codes without a legacy name (e.g. zh-Hant, zh-Hans, pt-BR) map
+            // directly to `<code>.lproj`.
+            let lang_code_str = lang_code_str.into_owned();
+            let lproj_ns = ns_string::from_rust_string(env, format!("{}.lproj", lang_code_str));
+            let localized_path =
+                path_for_resource_helper(env, this, name, lproj_ns, directory, extension);
+            release(env, lproj_ns);
+            if localized_path != nil {
+                return localized_path;
+            }
+            unknown_codes.insert(lang_code_str);
         }
     }
     if !unknown_codes.is_empty() {
