@@ -589,23 +589,23 @@ fn load_nib_file(env: &mut Environment, ui_nib: id, path: GuestPathBuf) -> Resul
     }
 
     if objects != nil {
-        let enumerator: id = msg![env; objects objectEnumerator];
-        if enumerator != nil {
-            loop {
-                let next: id = msg![env; enumerator nextObject];
-                if next == nil {
-                    break;
-                }
-                // Per the Resource Programming Guide, iOS sends
-                // awakeFromNib only to objects instantiated from the nib,
-                // not to File's Owner or other placeholder objects. A File's
-                // Owner that loads a nib from its own awakeFromNib would
-                // otherwise recurse forever.
-                if env.objc.borrow::<UINibHostObject>(ui_nib).proxy_objects.contains(&next) {
-                    continue;
-                }
-                () = msg![env; next awakeFromNib];
+        // Iterate by index: the First Responder placeholder decodes to nil,
+        // and an enumerator would stop at it, so the objects after it would
+        // never receive awakeFromNib.
+        let objects_count: NSUInteger = msg![env; objects count];
+        for i in 0..objects_count {
+            let next: id = msg![env; objects objectAtIndex:i];
+            if next == nil {
+                continue;
             }
+            // Per the Resource Programming Guide, iOS sends awakeFromNib
+            // only to objects instantiated from the nib, not to File's Owner
+            // or other placeholder objects. A File's Owner that loads a nib
+            // from its own awakeFromNib would otherwise recurse forever.
+            if env.objc.borrow::<UINibHostObject>(ui_nib).proxy_objects.contains(&next) {
+                continue;
+            }
+            () = msg![env; next awakeFromNib];
         }
     }
 
