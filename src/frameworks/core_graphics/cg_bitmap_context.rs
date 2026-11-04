@@ -533,6 +533,14 @@ impl CGBitmapContextDrawer<'_> {
     pub fn width(&self) -> GuestUSize {
         self.bitmap_info.width
     }
+    /// How many device pixels one user-space unit covers (e.g. the
+    /// `--ui-scale` factor for layer contents). Text is rasterized at this
+    /// resolution so it isn't drawn as an upscaled low-resolution bitmap.
+    pub fn raster_scale(&self) -> f32 {
+        let t = &self.transform;
+        let scale = (t.a * t.d - t.b * t.c).abs().sqrt();
+        if scale.is_finite() && scale > 1.0 { scale.min(16.0) } else { 1.0 }
+    }
     pub fn height(&self) -> GuestUSize {
         self.bitmap_info.height
     }

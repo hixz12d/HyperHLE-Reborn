@@ -668,6 +668,9 @@ pub fn break_lines_with_font<'a>(
     font.break_lines(size, text, wrap)
 }
 
+/// Draw a glyph rasterized at `raster_scale` times its point size (with its
+/// origin in scaled units too) at its point-space position. Pass 1.0 for a
+/// glyph rasterized at point size.
 #[inline(always)]
 pub fn draw_font_glyph(
     drawer: &mut CGBitmapContextDrawer,
@@ -675,15 +678,16 @@ pub fn draw_font_glyph(
     fill_color: (f32, f32, f32, f32),
     clip_x: Option<Range<f32>>,
     clip_y: Option<Range<f32>>,
+    raster_scale: f32,
 ) {
     let mut glyph_rect = {
         let (x, y) = raster_glyph.origin();
         let (width, height) = raster_glyph.dimensions();
         CGRect {
-            origin: CGPoint { x, y },
+            origin: CGPoint { x: x / raster_scale, y: y / raster_scale },
             size: CGSize {
-                width: width as f32,
-                height: height as f32,
+                width: width as f32 / raster_scale,
+                height: height as f32 / raster_scale,
             },
         }
     };
@@ -706,8 +710,8 @@ pub fn draw_font_glyph(
 
     for ((x, y), (tex_x, tex_y)) in drawer.iter_transformed_pixels(glyph_rect) {
         let coverage = raster_glyph.pixel_at((
-            (tex_x * glyph_rect.size.width - 0.5).round() as i32,
-            (tex_y * glyph_rect.size.height - 0.5).round() as i32,
+            (tex_x * glyph_rect.size.width * raster_scale - 0.5).round() as i32,
+            (tex_y * glyph_rect.size.height * raster_scale - 0.5).round() as i32,
         ));
         let (r, g, b, a) = fill_color;
         let (r, g, b, a) = (r * coverage, g * coverage, b * coverage, a * coverage);
@@ -734,13 +738,16 @@ pub fn draw_at_point(
     let (width, height) = font.calculate_text_size(size, text, width_and_line_break_mode);
     let mut drawer = CGBitmapContextDrawer::new(&env.objc, &mut env.mem, context);
     let fill_color = drawer.rgb_fill_color();
+    // Lay out and rasterize in device pixels, so text in a scaled context
+    // (e.g. --ui-scale) is sharp instead of an upscaled point-size bitmap.
+    let s = drawer.raster_scale();
     font.draw(
-        size,
+        size * s,
         text,
-        (point.x, point.y),
-        width_and_line_break_mode,
+        (point.x * s, point.y * s),
+        width_and_line_break_mode.map(|(width, mode)| (width * s, mode)),
         TextAlignment::Left,
-        |raster_glyph| draw_font_glyph(&mut drawer, raster_glyph, fill_color, clip_x.clone(), None),
+        |raster_glyph| draw_font_glyph(&mut drawer, raster_glyph, fill_color, clip_x.clone(), None, s),
     );
     CGSize { width, height }
 }
@@ -769,11 +776,13 @@ pub fn draw_in_rect(
         UITextAlignmentRight => (rect.size.width, TextAlignment::Right),
         _ => (0.0, TextAlignment::Left),
     };
+    // See draw_at_point: rasterize at device resolution.
+    let s = drawer.raster_scale();
     font.draw(
-        size,
+        size * s,
         text,
-        (rect.origin.x + origin_x_offset, rect.origin.y),
-        Some((rect.size.width, convert_line_break_mode(line_break_mode))),
+        ((rect.origin.x + origin_x_offset) * s, rect.origin.y * s),
+        Some((rect.size.width * s, convert_line_break_mode(line_break_mode))),
         alignment,
         |raster_glyph| {
             draw_font_glyph(
@@ -782,6 +791,7 @@ pub fn draw_in_rect(
                 fill_color,
                 Some(rect.origin.x..(rect.origin.x + rect.size.width)),
                 Some(rect.origin.y..(rect.origin.y + rect.size.height)),
+                s,
             )
         },
     );

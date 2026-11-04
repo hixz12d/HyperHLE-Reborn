@@ -768,7 +768,7 @@ fn CTLineDraw(env: &mut Environment, line: CTLineRef, context: id) {
         (0.0, 0.0),
         None,
         TextAlignment::Left,
-        |glyph| draw_font_glyph(&mut drawer, glyph, fill_color, None, None),
+        |glyph| draw_font_glyph(&mut drawer, glyph, fill_color, None, None, 1.0),
     );
     drop(drawer);
     if needs_y_flip {

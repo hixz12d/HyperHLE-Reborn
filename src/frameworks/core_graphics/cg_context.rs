@@ -1319,6 +1319,7 @@ fn CGContextShowGlyphsAtPoint(
                 fill_color,
                 /* clip_x: */ None,
                 /* clip_y: */ None,
+                /* raster_scale: */ 1.0,
             )
         },
     );
@@ -1379,6 +1380,7 @@ fn CGContextShowGlyphsAtPositions(
                 fill_color,
                 /* clip_x: */ None,
                 /* clip_y: */ None,
+                /* raster_scale: */ 1.0,
             )
         },
     );
@@ -1438,6 +1440,7 @@ fn CGContextShowGlyphsWithAdvances(
                 fill_color,
                 /* clip_x: */ None,
                 /* clip_y: */ None,
+                /* raster_scale: */ 1.0,
             )
         },
     );
