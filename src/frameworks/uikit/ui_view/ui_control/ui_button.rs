@@ -502,6 +502,12 @@ pub const CLASSES: ClassExports = objc_classes! {
     let host = env.objc.borrow::<UIButtonHostObject>(this);
     let (horizontal, insets) = (host.content_horizontal_alignment, host.title_edge_insets);
     let area = inset_rect(content_rect, insets);
+    // An image wider than the button is shrunk to fit (see
+    // imageRectForContentRect:), so it never pushes the title further.
+    let image_size = CGSize {
+        width: image_size.width.min(content_rect.size.width),
+        ..image_size
+    };
     // The title label's text alignment follows contentHorizontalAlignment
     // (see setContentHorizontalAlignment:). Rather than shrinking the label
     // to the measured text width, which could clip text that measures a
@@ -545,9 +551,11 @@ pub const CLASSES: ClassExports = objc_classes! {
         host.image_edge_insets,
     );
     let area = inset_rect(content_rect, insets);
+    // align_in_rect shrinks an image larger than the area to fit it; lay
+    // the pair out with that shrunk width, not the image's natural one.
     let mut rect = align_in_rect(area, image_size, horizontal, vertical);
     if horizontal != UIControlContentHorizontalAlignmentFill {
-        let total_width = image_size.width + title_size.width;
+        let total_width = rect.size.width + title_size.width;
         rect.origin.x = match horizontal {
             UIControlContentHorizontalAlignmentLeft => area.origin.x,
             UIControlContentHorizontalAlignmentRight => {
