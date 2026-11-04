@@ -2160,7 +2160,19 @@ impl Window {
                     Event::TextInput(TextInputEvent::Text(text))
                 }
                 _ => continue,
-            })
+            });
+            // On Android, the SDL event pump blocks inside the next poll once
+            // the activity has paused, until it resumes. Stop polling so the
+            // app delegate gets applicationWillResignActive: /
+            // applicationDidEnterBackground: (where games save) now, rather
+            // than only after the user returns. If the user kills the app
+            // from the background instead, the save would otherwise be lost.
+            if matches!(
+                self.event_queue.back(),
+                Some(Event::AppWillResignActive | Event::AppDidEnterBackground)
+            ) {
+                break;
+            }
         }
 
         if controller_updated {
