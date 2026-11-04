@@ -57,6 +57,11 @@ struct UINibHostObject {
     /// `UINibExternalObjects` / `UINibProxiedObjectsKey`. Non-retained:
     /// the caller owns the dictionary for the duration of the call.
     external_objects: id,
+    /// Objects that `UIProxyObject`s in the nib currently being loaded were
+    /// replaced with (File's Owner, external objects). These are
+    /// placeholders, not objects instantiated from the nib, so they must not
+    /// receive `awakeFromNib`. Non-retained.
+    proxy_objects: Vec<id>,
 }
 impl HostObject for UINibHostObject {}
 
@@ -95,6 +100,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         bundle,
         file_owner: nil,
         external_objects: nil,
+        proxy_objects: Vec::new(),
     });
 
     let new = env.objc.alloc_object(this, host_object, &mut env.mem);
@@ -197,6 +203,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         let host = env.objc.borrow_mut::<UINibHostObject>(this);
         host.file_owner = nil;
         host.external_objects = nil;
+        host.proxy_objects.clear();
     }
     top_level_objects
 }
@@ -220,6 +227,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         if external != nil {
             let replacement: id = msg![env; external objectForKey:id_nss];
             if replacement != nil {
+                env.objc.borrow_mut::<UINibHostObject>(delegate).proxy_objects.push(replacement);
                 release(env, this);
                 return retain(env, replacement);
             }
@@ -237,6 +245,7 @@ pub const CLASSES: ClassExports = objc_classes! {
         if delegate != nil {
             let file_owner = env.objc.borrow::<UINibHostObject>(delegate).file_owner;
             if file_owner != nil {
+                env.objc.borrow_mut::<UINibHostObject>(delegate).proxy_objects.push(file_owner);
                 release(env, this);
                 return retain(env, file_owner);
             }
@@ -586,6 +595,14 @@ fn load_nib_file(env: &mut Environment, ui_nib: id, path: GuestPathBuf) -> Resul
                 let next: id = msg![env; enumerator nextObject];
                 if next == nil {
                     break;
+                }
+                // Per the Resource Programming Guide, iOS sends
+                // awakeFromNib only to objects instantiated from the nib,
+                // not to File's Owner or other placeholder objects. A File's
+                // Owner that loads a nib from its own awakeFromNib would
+                // otherwise recurse forever.
+                if env.objc.borrow::<UINibHostObject>(ui_nib).proxy_objects.contains(&next) {
+                    continue;
                 }
                 () = msg![env; next awakeFromNib];
             }
