@@ -195,6 +195,22 @@ fn align_in_rect(
     }
 }
 
+/// Natural sizes of the button's current image and title (zero when absent).
+fn content_item_sizes(env: &mut Environment, button: id) -> (CGSize, CGSize) {
+    let zero = CGSize { width: 0.0, height: 0.0 };
+    let image: id = msg![env; button currentImage];
+    let image_size: CGSize = if image != nil { msg![env; image size] } else { zero };
+    let title: id = msg![env; button currentTitle];
+    let title_size: CGSize = if title != nil && !to_rust_string(env, title).is_empty() {
+        let label = env.objc.borrow::<UIButtonHostObject>(button).title_label;
+        let unbounded = CGSize { width: CGFloat::MAX, height: CGFloat::MAX };
+        msg![env; label sizeThatFits:unbounded]
+    } else {
+        zero
+    };
+    (image_size, title_size)
+}
+
 fn init_common(env: &mut Environment, this: id) -> id {
     () = msg![env; this setOpaque:false];
     let bg_color: id = msg_class![env; UIColor clearColor];
@@ -476,12 +492,52 @@ pub const CLASSES: ClassExports = objc_classes! {
     }
 }
 
+// UIButton lays out the image and the title side by side (image first) and
+// aligns the pair as a whole by contentHorizontalAlignment. Each item is
+// positioned within the content rect inset by its own edge insets, so e.g.
+// a positive titleEdgeInsets.left nudges only the title.
+// https://developer.apple.com/documentation/uikit/uibutton/1624010-titleedgeinsets
 - (CGRect)titleRectForContentRect:(CGRect)content_rect {
-    content_rect
+    let (image_size, title_size) = content_item_sizes(env, this);
+    let host = env.objc.borrow::<UIButtonHostObject>(this);
+    let (horizontal, insets) = (host.content_horizontal_alignment, host.title_edge_insets);
+    let area = inset_rect(content_rect, insets);
+    // The title label's text alignment follows contentHorizontalAlignment
+    // (see setContentHorizontalAlignment:). Rather than shrinking the label
+    // to the measured text width, which could clip text that measures a
+    // little narrower than it draws, give it the room on the side the text
+    // is anchored to.
+    match horizontal {
+        UIControlContentHorizontalAlignmentLeft => {
+            let x = area.origin.x + image_size.width;
+            CGRect {
+                origin: CGPoint { x, y: area.origin.y },
+                size: CGSize {
+                    width: (area.origin.x + area.size.width - x).max(0.0),
+                    height: area.size.height,
+                },
+            }
+        }
+        UIControlContentHorizontalAlignmentRight => area,
+        _ => {
+            // Centered text: shift the full-width label so the text's center
+            // lands to the right of the image, the pair centered as a whole.
+            let title_width = title_size.width.min((area.size.width - image_size.width).max(0.0));
+            let pair_x = area.origin.x + (area.size.width - image_size.width - title_width) / 2.0;
+            let center_x = pair_x + image_size.width + title_width / 2.0;
+            CGRect {
+                origin: CGPoint {
+                    x: center_x - area.size.width / 2.0,
+                    y: area.origin.y,
+                },
+                size: area.size,
+            }
+        }
+    }
 }
 
 - (CGRect)imageRectForContentRect:(CGRect)content_rect {
-    let image: id = msg![env; this currentImage];
+    let (image_size, title_size) = content_item_sizes(env, this);
     let host = env.objc.borrow::<UIButtonHostObject>(this);
     let (horizontal, vertical, insets) = (
         host.content_horizontal_alignment,
@@ -489,12 +545,18 @@ pub const CLASSES: ClassExports = objc_classes! {
         host.image_edge_insets,
     );
     let area = inset_rect(content_rect, insets);
-    let size: CGSize = if image != nil {
-        msg![env; image size]
-    } else {
-        CGSize { width: 0.0, height: 0.0 }
-    };
-    align_in_rect(area, size, horizontal, vertical)
+    let mut rect = align_in_rect(area, image_size, horizontal, vertical);
+    if horizontal != UIControlContentHorizontalAlignmentFill {
+        let total_width = image_size.width + title_size.width;
+        rect.origin.x = match horizontal {
+            UIControlContentHorizontalAlignmentLeft => area.origin.x,
+            UIControlContentHorizontalAlignmentRight => {
+                area.origin.x + area.size.width - total_width
+            }
+            _ => area.origin.x + (area.size.width - total_width) / 2.0,
+        };
+    }
+    rect
 }
 
 - (CGRect)contentRectForBounds:(CGRect)bounds {
